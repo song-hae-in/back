@@ -4,7 +4,25 @@
 /node_modules
 /.pnp
 .pnp.js
+
+# Python virtual environment
 /venv
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# SQLite database
+database/*.db
+*.sqlite3
 
 # testing
 /coverage

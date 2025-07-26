@@ -48,7 +48,7 @@ def score_answer():
     answer = request.json.get('answer', '')
     # 답변 길이와 키워드 포함 여부로 점수 산출(예시)
     score = 50 + len(answer) // 5
-    if any(keyword in answer for keyword in ['안전', '경청', '공감', '위생', '손씻기']):
+    if any(keyword in answer for keyword in ['안전', '경청', '공감', '위생  ₩', '손씻기']):
         score += 20
     score = min(score, 100)
     return jsonify({'score': score})
