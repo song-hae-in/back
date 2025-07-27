@@ -15,3 +15,6 @@
 ### ⚙️ STACK
 ![Flask](https://img.shields.io/badge/Flask-000000?style=flat-square&logo=flask&logoColor=white) ![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)
 
+## 📝 산출물
+
+### 1. [API 명세서](https://www.notion.so/API-23b1b52e7b3e8072a611c0ba3bce8d96?source=copy_link)
