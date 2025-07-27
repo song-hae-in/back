@@ -7,20 +7,47 @@ from flask import current_app
 
 bp = Blueprint('auth', __name__)
 
-@bp.route('/login', methods=['POST'])
-def login():
+@bp.route('/api/auth/join', methods=['POST'])
+def join():
     data = request.get_json()
     if not data or 'username' not in data or 'email' not in data or 'password' not in data:
-        return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'})
+        return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'}), 400
 
     user = User.query.filter_by(email=data['email']).first()
-    if not user:
-        user = User(username=data['username'], email=data['email'], password=data['password'])
-        db.session.add(user)
-        db.session.commit()
+    if user:
+        return jsonify({'result': 'fail', 'code': '409', 'message': 'User already exists'}), 409
+
+    user = User(username=data['username'], email=data['email'], password=data['password'])
+    db.session.add(user)
+    db.session.commit()
 
     token = create_access_token(identity=user.id)
     return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
+
+
+@bp.route('/api/auth/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    if not data or 'email' not in data or 'password' not in data:
+        return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'})
+
+    user = User.query.filter_by(email=data['email'], password=data['password']).first()
+    if not user:
+        return jsonify({'result': 'fail', 'code': '401', 'message': 'Invalid credentials'}), 401
+
+    token = create_access_token(identity=user.id)
+    return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
+
+@bp.route('/api/auth/verify', methods=['POST'])
+def verify():
+    data = request.get_json()
+    email = data.get('email')
+
+    if not email:
+        return jsonify({'result': 'fail', 'code': '400', 'message': 'Email is required'}), 400
+
+    exists = User.query.filter_by(email=email).first() is not None
+    return jsonify({'result': 'ok', 'data': {'exists': exists}})
 
 @bp.route('/kakao/login')
 def kakao_login():
@@ -56,7 +83,7 @@ def kakao_callback():
         headers = {'Authorization': f'Bearer {access_token}'}
         user_info_res = requests.get('https://kapi.kakao.com/v2/user/me', headers=headers)
         user_info = user_info_res.json()
-        print("[🔍 user_info response]", user_info)
+        # print("[🔍 user_info response]", user_info)
 
         if 'id' not in user_info:
             return jsonify({'result': 'fail', 'message': 'Kakao 사용자 정보 조회 실패', 'detail': user_info}), 400
@@ -73,9 +100,11 @@ def kakao_callback():
             db.session.commit()
 
         token = create_access_token(identity=user.id)
+        print("[Kakao 로그인 성공]", user.username, user.email)
+        # print(jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}}))
         return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
 
     except Exception as e:
-        print("❌ Exception:", e)
+        print("Exception:", e)
         return jsonify({'result': 'fail', 'message': 'Internal Server Error', 'detail': str(e)}), 500
 

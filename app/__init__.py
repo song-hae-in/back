@@ -13,7 +13,7 @@ def create_app():
 
     db.init_app(app)
     jwt.init_app(app)
-    CORS(app)
+    CORS(app, supports_credentials=True)
 
     from app.routes import auth, interview, info
     app.register_blueprint(auth.bp)
