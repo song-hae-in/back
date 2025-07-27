@@ -4,11 +4,13 @@ from app.models import User
 
 bp = Blueprint('info', __name__)
 
+# Test API
 @bp.route('/info', methods=['GET'])
 def get_info():
     return jsonify({'result': 'ok', 'data': {'service': 'LLM Interview API', 'status': 'running'}})
 
-@bp.route('/user_info', methods=['GET'])
+# User Information API
+@bp.route('/api/user/info', methods=['GET'])
 @jwt_required()
 def get_user_info():
     user_id = get_jwt_identity()
@@ -19,7 +21,6 @@ def get_user_info():
     return jsonify({
         'result': 'ok',
         'data': {
-            'id': user.id,
             'username': user.username,
             'email': user.email
         }
