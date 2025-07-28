@@ -22,7 +22,9 @@ def start_interview():
     generate a new interview question using the LLM service
     using Qwen or other LLMs to generate a question
     '''
+    print("[Interview Start] Generating question...")
     user_id = get_jwt_identity()
+    print("user_id : ", user_id)
     questionList = generate_question() # <- QustionList should contain keys like 'question', 'type'
     interview = Interview(
         user_id=user_id,

@@ -12,5 +12,8 @@ class Interview(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     question = db.Column(db.Text, nullable=False)
     answer = db.Column(db.Text)
+    # video = db.Column(db.Text)
+    # type = db.Column(db.String(80))
+
     score = db.Column(db.Float)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)

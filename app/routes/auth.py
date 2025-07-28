@@ -21,7 +21,9 @@ def join():
     db.session.add(user)
     db.session.commit()
 
-    token = create_access_token(identity=user.id)
+    # token = create_access_token(identity=user.id)
+    token = create_access_token(identity=str(user.id))
+    print("[User Joined]", user.username, user.email, token)
     return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
 
 
@@ -35,7 +37,8 @@ def login():
     if not user:
         return jsonify({'result': 'fail', 'code': '401', 'message': 'Invalid credentials'}), 401
 
-    token = create_access_token(identity=user.id)
+    # token = create_access_token(identity=user.id)
+    token = create_access_token(identity=str(user.id))
     return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
 
 @bp.route('/api/auth/verify', methods=['POST'])
@@ -98,8 +101,9 @@ def kakao_callback():
             user = User(username=nickname, email=email, password='kakao')
             db.session.add(user)
             db.session.commit()
-
-        token = create_access_token(identity=user.id)
+            
+        # token = create_access_token(identity=user.id)
+        token = create_access_token(identity=str(user.id))
         print("[Kakao 로그인 성공]", user.username, user.email)
         # print(jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}}))
         return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})

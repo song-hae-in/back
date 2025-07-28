@@ -1,5 +1,6 @@
 import random
 
+# Test function to get Interview questions
 def generate_question():
     questions = [
         "기본간호학에서 가장 중요한 개념은 무엇인가요?",
