@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app import db
 from app.models import Interview
 from app.services.llm_service import generate_question
-from app.services.score_service import score_answer
+from app.services.llm_analysis import score_answer, analysisByLLM
 
 bp = Blueprint('interview', __name__)
 
@@ -45,7 +45,7 @@ def next_question():
     # request = {"question": "string","answer": "string","video": "video","type": "string",}
     # response = {"result" : "ok","data" : {"message": "ok"}
     data = request.get_json()
-    if not data or 'question' not in data or 'answer' not in data or 'video' not in data or 'type' not in data:
+    if not data or 'question' not in data or 'useranswer' not in data or 'video' not in data or 'type' not in data:
         return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'}), 400
     user_id = get_jwt_identity()
     
@@ -53,17 +53,34 @@ def next_question():
     
     if not interview:
         return jsonify({'result': 'fail', 'code': '404', 'message': 'Interview not found'}), 404
-    interview.answer = data['answer']
+    interview.useranswer = data['useranswer']
     interview.video = data['video']
     interview.type = data['type']
+    
+    analysis = analysisByLLM(interview.useranswer)
+    interview.LLM_gen_answer = analysis["LLM_gen_answer"]
+    interview.analysis = analysis["analysis"]
+    
     db.session.commit()
     return jsonify({'result': 'ok', 'data': {'message': 'ok'}})
 
+@bp.route('/api/analysis/info', methods=['GET'])
+@jwt_required()
+def get_analysis():
+    user_id = get_jwt_identity()
+    interviews = Interview.query.filter_by(user_id=user_id).all()
+    # data = InterviewList(question, useranswer, LLM_gen_answer, video, type, analysis)
+    data = [{'question': i.question, 'useranswer': i.useranswer, 'LLM_gen_answer': i.LLM_gen_answer,
+                'video': i.video, 'type': i.type, 'analysis': i.analysis} for i in interviews]
+    if not data:
+        return jsonify({'result': 'fail', 'code': '404', 'message': 'No interviews found'}), 404
+    
+    print("[Analysis Info]", data)
+
+    return jsonify({'result': 'ok', 'data': {'interviews': data}})
 
 
-
-
-
+#-------------------------------------------------#
 
 # Interview Question API
 @bp.route('/api/answer', methods=['POST'])
