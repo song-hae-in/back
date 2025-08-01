@@ -52,7 +52,7 @@ def verify():
     exists = User.query.filter_by(email=email).first() is not None
     return jsonify({'result': 'ok', 'data': {'exists': exists}})
 
-@bp.route('/kakao/login')
+@bp.route('/kakao/login', methods=['GET', 'POST'])
 def kakao_login():
     kakao_oauth_url = (
         f"https://kauth.kakao.com/oauth/authorize?response_type=code"
@@ -105,8 +105,10 @@ def kakao_callback():
         # token = create_access_token(identity=user.id)
         token = create_access_token(identity=str(user.id))
         print("[Kakao 로그인 성공]", user.username, user.email)
-        # print(jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}}))
-        return jsonify({'result': 'ok', 'data': {'token': token, 'username': user.username, 'email': user.email}})
+        
+        # 메인 페이지로 바로 리다이렉트하면서 토큰과 사용자 정보 전달
+        frontend_url = f"http://localhost:3000/?kakao_login=success&token={token}&username={user.username}&email={user.email}"
+        return redirect(frontend_url)
 
     except Exception as e:
         print("Exception:", e)

@@ -40,4 +40,4 @@ def send_server_info():
     }
     return jsonify(server_data), 200
 if __name__ == '__main__':
-    app.run(debug=True, host='localhost', port=8080)
+    app.run(debug=True)
