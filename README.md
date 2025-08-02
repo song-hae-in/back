@@ -1,5 +1,7 @@
 # LLM Interview Service
 
+간호사 면접 준비를 위한 AI 기반 면접 연습 서비스
+
 ### ✨ TEAM MEMBER
 <table>
   <tbody>
@@ -14,6 +16,31 @@
 
 ### ⚙️ STACK
 ![Flask](https://img.shields.io/badge/Flask-000000?style=flat-square&logo=flask&logoColor=white) ![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)
+
+## 🚀 시작하기
+
+### 환경변수 설정
+1. `.env.example` 파일을 복사하여 `.env` 파일을 생성합니다.
+```bash
+cp .env.example .env
+```
+
+2. `.env` 파일에서 다음 값들을 설정하세요:
+- `JWT_SECRET_KEY`: JWT 토큰 서명용 시크릿 키
+- `KAKAO_CLIENT_ID`: 카카오 개발자 콘솔에서 발급받은 앱 키
+- `KAKAO_CLIENT_SECRET`: 카카오 개발자 콘솔에서 발급받은 시크릿 키
+- `OPENAI_API_KEY`: AIMLAPI에서 발급받은 API 키
+
+### 서버 실행
+```bash
+# 의존성 설치
+pip install -r requirements.txt
+
+# 서버 실행
+python run.py
+```
+
+서버는 기본적으로 `http://localhost:8080`에서 실행됩니다.
 
 ## 📝 산출물
 

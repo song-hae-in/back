@@ -95,7 +95,7 @@ def kakao_callback():
         kakao_account = user_info.get('kakao_account', {})
         email = kakao_account.get('email', f"{kakao_id}@kakao.com")
         nickname = kakao_account.get('profile', {}).get('nickname', f"user_{kakao_id}")
-
+        print("[Kakao 사용자 정보]", user_info)
         user = User.query.filter_by(email=email).first()
         if not user:
             user = User(username=nickname, email=email, password='kakao')
