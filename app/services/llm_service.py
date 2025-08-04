@@ -38,5 +38,37 @@ def generate_question():
     )
 
     message = response.choices[0].message.content
-    print(f"Assistant: {message}")
-    return message
+ 
+    message = message.split("</think>")[1] if "</think>" in message else message
+
+    try:
+        lines = message.strip().split('\n')
+        question = ""
+        answer = ""
+        
+        for line in lines:
+            if line.startswith("면접 질문:"):
+                question = line.replace("면접 질문:", "").strip()
+            elif line.startswith("생성한 답:"):
+                answer = line.replace("생성한 답:", "").strip()
+
+        questionList = [
+            {
+                "question": question,
+                "answer": answer,
+                "type": "간호사"
+            }
+        ]
+        
+    except Exception as e:
+        print(f"파싱 오류: {e}")
+        questionList = [
+            {
+                "question": "Parsing failed",
+                "answer": "Parsing failed",
+                "type": "None"
+            }
+        ]
+
+    print(f"Parsed Question List: {questionList}")
+    return questionList

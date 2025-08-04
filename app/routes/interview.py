@@ -7,7 +7,7 @@ from app.models import Interview
 from app.services.test_question import generate_question
 
 # 실제 인터뷰 Q,A 생성 서비스
-# from app.services.test_question import generate_question
+# from app.services.llm_service import generate_question
 
 from app.services.llm_analysis import score_answer, analysisByLLM
 
@@ -34,7 +34,9 @@ def start_interview():
     questionList = generate_question() # <- QustionList should contain keys like 'question', 'type'
     interview = Interview(
         user_id=user_id,
-        question=questionList
+        question=questionList[0]['question'],  # Assuming questionList is a list of dicts
+        LLM_gen_answer=questionList[0]['answer'],
+        type=questionList[0]['type']
     )
     db.session.add(interview)
     db.session.commit()
