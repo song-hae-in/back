@@ -9,7 +9,7 @@ from app.models import Interview
 # 실제 인터뷰 Q,A 생성 서비스
 from app.services.llm_service import generate_question
 
-from app.services.llm_analysis import score_answer, analysisByLLM
+from app.services.llm_analysis import analysisByLLM
 
 bp = Blueprint('interview', __name__)
 
@@ -76,6 +76,8 @@ def next_question():
 def get_analysis():
     user_id = get_jwt_identity()
     
+    summary = analysisByLLM(user_id)
+    
     interviews = Interview.query.filter_by(user_id=user_id).all()
     if not interviews:
         return jsonify({'result': 'fail', 'code': '404', 'message': 'No interviews found'}), 404
@@ -92,11 +94,12 @@ def get_analysis():
     
     data = {
         "InterviewList": interview_list,
-        "summary": "API success Data : 지원자는 전반적으로 명확한 어조와 침착한 태도를 유지하며 좋은 인상을 주었습니다. 특히 협업에 있어 논리적인 문제 해결 접근을 보였고, 기술 스택에 대한 이해도도 기본 이상이었습니다. 다만 전반적으로 '구체성'이 부족해 실무 능력을 강조하기에는 설득력이 다소 약했습니다. 이후에는 경험 중심의 답변 구성과 수치·성과 중심의 표현 연습이 필요합니다.",
+        "summary": summary,
+        # "summary": "API success Data : 지원자는 전반적으로 명확한 어조와 침착한 태도를 유지하며 좋은 인상을 주었습니다. 특히 협업에 있어 논리적인 문제 해결 접근을 보였고, 기술 스택에 대한 이해도도 기본 이상이었습니다. 다만 전반적으로 '구체성'이 부족해 실무 능력을 강조하기에는 설득력이 다소 약했습니다. 이후에는 경험 중심의 답변 구성과 수치·성과 중심의 표현 연습이 필요합니다.",
         "video": "interview_20250728_user1234.mp4"
     }   
     
-    print("[Analysis Info]", sampleData)
+    print("[Analysis Info]", data)
     # return jsonify({'result': 'ok', 'data': {'interviews': sampleData}})
     return jsonify({'result': 'ok', 'data': data})
 
