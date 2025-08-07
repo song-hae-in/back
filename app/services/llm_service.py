@@ -53,7 +53,7 @@ def generate_question():
                 answer = line.replace("생성한 답:", "").strip()
 
         questionList = [
-            {
+            {   # "interviewID": 0,
                 "question": question,
                 "answer": answer,
                 "type": "간호사"
@@ -63,7 +63,7 @@ def generate_question():
     except Exception as e:
         print(f"파싱 오류: {e}")
         questionList = [
-            {
+            {   # "interviewID": 0,
                 "question": "Parsing failed",
                 "answer": "Parsing failed",
                 "type": "None"
