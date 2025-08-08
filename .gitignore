@@ -8,6 +8,9 @@
 # Python virtual environment
 /venv
 
+# videos
+/app/static/videos
+
 # Python cache files
 __pycache__/
 *.py[cod]

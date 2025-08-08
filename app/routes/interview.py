@@ -4,6 +4,8 @@ from app import db
 from app.models import Interview
 import uuid
 from datetime import datetime
+import os
+from werkzeug.utils import secure_filename
 
 # 테스트용 인터뷰 Q,A 생성 함수
 # from app.services.test_question import generate_question
@@ -69,32 +71,47 @@ def start_interview():
 @bp.route('/api/interview/answer', methods=['POST'])
 @jwt_required()
 def next_question():
-    data = request.get_json()
-    if not data or 'question' not in data or 'useranswer' not in data or 'video' not in data or 'type' not in data:
-        print("[Error] Invalid input data:", data)
-        return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'}), 400
+    # data = request.get_json()
+    # if not data or 'question' not in data or 'useranswer' not in data or 'video' not in data or 'type' not in data:
+    #     print("[Error] Invalid input data:", data)
+    #     return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid input'}), 400
+    if 'question' not in request.form or 'useranswer' not in request.form or 'type' not in request.form:
+        print("[Error] Invalid form data:", request.form)
+        return jsonify({'result': 'fail', 'code': '400', 'message': 'Invalid form data'}), 400
+       
     user_id = get_jwt_identity()
+    question_text = request.form.get('question')
+    user_answer_text = request.form.get('useranswer') # 클라이언트에서 'answer' 키로 보내므로 'answer'로 받음
+    interview_type = request.form.get('type')
+    session_id = request.form.get('session_id')
     
-    # session_id가 있으면 사용, 없으면 question으로 찾기 (기존 호환성)
-    if 'session_id' in data:
-        interview = Interview.query.filter_by(
-            user_id=user_id, 
-            question=data['question'],
-            session_id=data['session_id']
-        ).first()
-    else:
-        interview = Interview.query.filter_by(user_id=user_id, question=data['question']).first()
+    interview = Interview.query.filter_by(
+        user_id=user_id, 
+        question=question_text,
+        session_id=session_id
+    ).first()
     
     if not interview:
         return jsonify({'result': 'fail', 'code': '404', 'message': 'Interview not found'}), 404
     
-    interview.useranswer = data['useranswer']
-    interview.video = data['video']
-    interview.type = data['type']
-    
-    # analysis = analysisByLLM(interview.useranswer)
-    # interview.LLM_gen_answer = analysis["LLM_gen_answer"]
-    # interview.analysis = analysis["analysis"]
+    if 'video' in request.files:
+        video_file = request.files['video']
+        if video_file.filename != '':
+            # 파일 이름을 안전하게 만들고, 저장 경로를 설정 (예: static/videos/)
+            # "user_id_타임스탬프.webm" 와 같은 형식으로 고유한 파일명 생성 추천
+            filename = secure_filename(f"{user_id}_{interview.id}_{video_file.filename}")
+            save_path = os.path.join('app/static/videos', filename) # 저장할 폴더 경로
+            
+            # 폴더가 없으면 생성
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            
+            video_file.save(save_path)
+            
+            # DB에는 파일의 경로 또는 파일명을 저장
+            interview.video = save_path
+            
+    interview.useranswer = user_answer_text
+    interview.type = interview_type
     
     db.session.commit()
     return jsonify({'result': 'ok', 'data': {'message': 'ok'}})
