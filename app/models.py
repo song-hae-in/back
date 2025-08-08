@@ -19,5 +19,6 @@ class Interview(db.Model):
     session_id = db.Column(db.String(36), nullable=True)  # UUID를 위한 필드
     question_order = db.Column(db.Integer, nullable=True, default=0)  # 질문 순서
 
+    summary = db.Column(db.Text, nullable=True, default="응답 없음")  # 전체 요약
     score = db.Column(db.Float)
     timestamp = db.Column(db.DateTime, default=datetime.datetime.utcnow)

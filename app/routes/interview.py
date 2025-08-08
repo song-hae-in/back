@@ -158,9 +158,11 @@ def get_history():
     
     if session_id:
         # 특정 세션의 인터뷰만 조회
+        print(f"[Interview Info] Fetching interviews for session: {session_id}")
         interviews = Interview.query.filter_by(user_id=user_id, session_id=session_id).order_by(Interview.question_order).all()
     else:
         # 모든 인터뷰 조회 (기존 동작 유지)
+        print("[Interview Info] No session_id provided, fetching all interviews for user.")
         interviews = Interview.query.filter_by(user_id=user_id).all()
     
     if not interviews:
@@ -175,13 +177,14 @@ def get_history():
             'analysis':        itv.analysis,
             'score':           itv.score,
             'session_id':      itv.session_id,
+            'summary':        itv.summary,
             'question_order':  getattr(itv, 'question_order', 0)
         })
     
-    summary = "면접결과 summary"
+    # summary = "면접결과 summary"
     data = {
         "InterviewList": interview_list,
-        "summary": summary,
+        "summary": itv.summary,
         "session_id": session_id,
         "video": interviews[0].video if interviews and interviews[0].video else "interview_20250728_user1234.mp4"
     }   
@@ -220,7 +223,8 @@ def get_sessions():
                 'LLM_gen_answer': itv.LLM_gen_answer,
                 'analysis': itv.analysis,
                 'score': itv.score,
-                'question_order': itv.question_order
+                'question_order': itv.question_order,
+                'summary': itv.summary
             })
         
         # 첫 번째 인터뷰 정보 가져오기

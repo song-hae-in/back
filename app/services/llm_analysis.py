@@ -89,22 +89,41 @@ def analysisByLLM(user_id, session_id=None):
     
     # 4) 정규식으로 {analysis} 와 {score} 값 모두 뽑아내기
     #    (?s) DOTALL: 줄바꿈 포함 매칭
-    analysis_pattern = re.compile(r"\{analysis\}\s*:\s*(.+?)(?=\{score\}|\Z)", re.IGNORECASE | re.DOTALL)
-    score_pattern    = re.compile(r"\{score\}\s*:\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
-    summary_pattern  = re.compile(r"\{summary\}\s*:\s*(.+)$", re.IGNORECASE | re.MULTILINE)
+    #    두 가지 패턴 모두 지원: {analysis} : 내용 또는 analysis : 내용
+    analysis_pattern = re.compile(r"(?:\{analysis\}|analysis)\s*:\s*(.+?)(?=(?:\{score\}|score)\s*:|$)", re.IGNORECASE | re.DOTALL)
+    score_pattern    = re.compile(r"(?:\{score\}|score)\s*:\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
+    summary_pattern  = re.compile(r"(?:\{summary\}|summary)\s*:\s*(.+?)(?=\n\n|\Z)", re.IGNORECASE | re.DOTALL)
 
     analyses = analysis_pattern.findall(message)
     scores   = score_pattern.findall(message)
     summary_matches = summary_pattern.findall(message)
     summary = summary_matches[-1].strip() if summary_matches else ""
+    
+    print(f"[Parsing Results] Found {len(analyses)} analyses, {len(scores)} scores")
+    print(f"[Analyses] {analyses}")
+    print(f"[Scores] {scores}")
+    print(f"[Summary] {summary}")
 
-    # 5) DB에 저장
-    for itv, anal, sc in zip(interviews, analyses, scores):
+    # 5) DB에 저장 - 길이 맞춤을 위한 안전 처리
+    min_length = min(len(interviews), len(analyses), len(scores))
+    print(f"[DB Save] Processing {min_length} interviews")
+    
+    for i in range(min_length):
+        itv = interviews[i]
+        anal = analyses[i] if i < len(analyses) else "분석 결과 없음"
+        sc = scores[i] if i < len(scores) else "0"
+        
         itv.analysis = anal.strip()
         try:
             itv.score = float(sc)
         except ValueError:
-            itv.score = None
+            itv.score = 0.0
+            print(f"[Warning] Invalid score format for interview {i}: {sc}")
+    
+    # 분석되지 않은 인터뷰들에 대한 기본값 설정
+    for i in range(min_length, len(interviews)):
+        interviews[i].analysis = "분석 결과 없음 (기본값)"
+        interviews[i].score = 0.0
 
     # summary 필드가 모델에 있다면 첫 레코드에 저장
     if hasattr(interviews[0], 'summary'):
