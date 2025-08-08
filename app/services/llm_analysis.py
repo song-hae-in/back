@@ -9,13 +9,13 @@ from app.models import Interview
 
 load_dotenv()
 
-def analysisByLLM(user_id):
-    print("[Analysis Start] analyzing...")
+def analysisByLLM(user_id, session_id=None):
+    print(f"[Analysis Start] analyzing user_id: {user_id}, session_id: {session_id}")
     """
-    1) 해당 유저의 모든 Interview 레코드 조회
+    1) 해당 유저의 특정 세션 또는 모든 Interview 레코드 조회
     2) LLM에 한번에 보내 분석
     3) 질문별 analysis, score를 각각의 Interview 객체에 저장
-    4) 전체 summary는 가장 첫 레코드(summary 필드가 있다면) 혹은 별도 처리
+    4) 전체 summary 반환
     """
     # 1) OpenAI 클라이언트 초기화
     client = OpenAI(
@@ -25,13 +25,22 @@ def analysisByLLM(user_id):
         api_key=os.getenv("OPENAI_API_KEY"),
     )
 
-    # 2) 모든 인터뷰 불러오기(시간순)
-    interviews = (Interview.query
-                       .filter_by(user_id=user_id)
-                       .order_by(Interview.timestamp)
-                       .all())
+    # 2) 인터뷰 불러오기 (세션별 또는 전체)
+    if session_id:
+        interviews = (Interview.query
+                           .filter_by(user_id=user_id, session_id=session_id)
+                           .order_by(Interview.question_order)
+                           .all())
+        print(f"[Analysis] Found {len(interviews)} interviews for session {session_id}")
+    else:
+        interviews = (Interview.query
+                           .filter_by(user_id=user_id)
+                           .order_by(Interview.timestamp)
+                           .all())
+        print(f"[Analysis] Found {len(interviews)} total interviews")
+    
     if not interviews:
-        return None
+        return "분석할 인터뷰 데이터가 없습니다."
 
     # 3) 프롬프트 생성 (질문/유저답변/LLM답변)
     prompt_parts = []
