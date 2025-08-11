@@ -1,7 +1,10 @@
 from dotenv import load_dotenv
 import os
+from pathlib import Path
 
-load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 class Config:
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' + os.path.join(os.path.abspath(os.path.dirname(__file__)), 'database', 'interview.db')

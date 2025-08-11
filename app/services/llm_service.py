@@ -6,45 +6,24 @@ load_dotenv()
 
 def generate_question():
     client = OpenAI(
-        # base_url="https://api.aimlapi.com/v1",
-        # api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=os.getenv("GEMINI_API_KEY"),
     )
 
-    response = client.chat.completions.create(
-        # model="Qwen/Qwen3-235B-A22B-fp8-tput",
-        model="qwen-turbo",
+    resp = client.chat.completions.create(
+        model="gemini-2.0-flash",
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "너는 간호사 면접 준비를 도와주는 AI야. "
-                    "사용자가 입력한 주제에 대해 실제 면접에서 나올 수 있는 간호사 면접 질문을 3개 생성하고, "
-                    "각 질문에 대한 모범적인 서술형 답변도 함께 생성해줘. "
-                    "출력 형식은 다음과 같이 해:\n\n"
-                    "면접 질문 1: (첫 번째 질문)\n"
-                    "생성한 답 1: (첫 번째 질문에 대한 서술형 답변)\n\n"
-                    "면접 질문 2: (두 번째 질문)\n"
-                    "생성한 답 2: (두 번째 질문에 대한 서술형 답변)\n\n"
-                    "면접 질문 3: (세 번째 질문)\n"
-                    "생성한 답 3: (세 번째 질문에 대한 서술형 답변)\n\n"
-                    "**<think> 같은 내부 지시는 절대 출력하지 말고**, "
-                    "전부 한국어로 출력해."
-                )
-            },
-            {
-                "role": "user",
-                "content": "주제: 성인간호학"
-            }
+            {"role": "system", "content":
+             "너는 간호사 면접관이야. 간호사 채용을 위해 전문지식과 인성을 평가할 수 질문을 섞어서 총 3개를 해 , "
+             "각 질문에 대한 너가 생각하는 답을 함께 작성해. 출력 형식은 다음과 같아야 해:\n\n"
+             "면접 질문 1: ...\n생성한 답 1: ...\n\n면접 질문 2: ...\n생성한 답 2: ...\n\n면접 질문 3: ...\n생성한 답 3: ...\n\n"
+             "<think> 같은 내부 지시는 절대 출력하지 말고 전부 한국어로 출력해."},
+            {"role": "user", "content": "주제: .. "}
         ],
-        temperature=0.7,
-        top_p=0.7,
-        frequency_penalty=1,
-        max_tokens=2048
+        temperature=0.7, top_p=0.9,
     )
 
-    message = response.choices[0].message.content
+    message = resp.choices[0].message.content
  
     message = message.split("</think>")[1] if "</think>" in message else message
 

@@ -17,12 +17,9 @@ def analysisByLLM(user_id, session_id=None):
     3) 질문별 analysis, score를 각각의 Interview 객체에 저장
     4) 전체 summary 반환
     """
-    # 1) OpenAI 클라이언트 초기화
     client = OpenAI(
-        # base_url="https://api.aimlapi.com/v1",
-        # api_key=os.getenv("OPENAI_API_KEY"),
-        base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=os.getenv("GEMINI_API_KEY"),
     )
 
     # 2) 인터뷰 불러오기 (세션별 또는 전체)
@@ -55,29 +52,28 @@ def analysisByLLM(user_id, session_id=None):
     combined = "\n".join(prompt_parts)
 
     system_prompt = (
-        "너는 간호사 면접 준비를 도와주는 AI야. "
-        "아래는 사용자가 진행한 모든 면접 질문과 답변이야:\n\n"
+        "너는 analyst야. "
+        "아래는 면접자가 받은 질문과 그에 대한 답변이야.:\n\n"
         f"{combined}\n\n"
-        "각 질문별로 다음 형식으로 분석 결과를 출력해줘:\n"
-        "{analysis} : (질문별 분석 내용)\n"
-        "{score} : (0~100 사이 점수)\n"
+        "각 답변에 대해 다음과 같은 형식으로 분석 결과를 제공해줘:\n"
+    """question": "최근 사용한 기술 스택은?",
+    "useranswer": "최근에는 React와 Flask를 이용해서 예약 시스템을 개발했습니다. 프론트엔드는 React로 구성했고, Flask로 API 서버를 구축했습니다. MongoDB를 데이터베이스로 사용했습니다.",
+    "LLM gen answer": "기술 스택에 대한 설명은 명확하나, 기술을 선택한 이유나 해결한 문제에 대한 언급이 없어 실무 역량이 충분히 드러나지 않습니다.",
+    "analysis": "분석내용: 말은 또렷하고 전달력은 좋았음. 다만 내용은 나열식으로 기술되어 면접관의 관심을 끌기엔 부족했음.\n미흡한점: 단순한 기술 나열. 해당 기술이 사용된 배경과 결과가 빠짐.\n개선점: 기술 선택 이유와 구현 성과 또는 문제 해결 경험을 추가.\n수정된 답변: 최근에는 React와 Flask를 사용해 병원 예약 시스템을 개발했습니다. 프론트엔드는 사용자 친화적인 UI를 구현하기 위해 React를, 백엔드는 빠른 REST API 개발을 위해 Flask를 사용했습니다. 인증은 JWT를, DB는 MongoDB로 구성해 빠른 검색이 가능하도록 최적화했습니다.",
+    "score": 78"""
         "그리고 마지막에 전체 면접에 대한 {summary}를 작성해줘.\n"
         "**<think> 같은 내부 지시는 절대 출력하지 말고**, 전부 한국어로 작성해."
     )
 
     # 4) Chat Completion 호출
     response = client.chat.completions.create(
-        # model="Qwen/Qwen3-235B-A22B-fp8-tput",
-        model="qwen-turbo",
-
+        model="gemini-2.0-flash",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": "전체 인터뷰 분석해주세요."}
         ],
         temperature=0.7,
-        top_p=0.7,
-        frequency_penalty=1,
-        max_tokens=2048
+        top_p=0.9,
     )
     
     message = response.choices[0].message.content
