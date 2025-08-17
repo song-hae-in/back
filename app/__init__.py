@@ -19,6 +19,7 @@ def create_app():
     app.register_blueprint(auth.bp)
     app.register_blueprint(interview.bp)
     app.register_blueprint(info.bp)
+    
 
     with app.app_context():
         db.create_all()

@@ -1,137 +1,323 @@
-from openai import OpenAI
-import re
+# app/services/analysis_api.py
+# -*- coding: utf-8 -*-
+"""
+면접 분석 통합 파일
+- LLM 분석(항목별 analysis/score + 전체 summary + overall scores)
+- DB 저장
+- 프론트엔드가 바로 쓰는 응답 포맷(InterviewList, summary, scores)
+- GET /api/interview/analysis?session_id=...  (JWT 필요)
+"""
+
 import os
+import re
+import json
+from typing import Dict, Any, List, Optional
+
 from dotenv import load_dotenv
-import random
-from datetime import datetime
+from flask import Blueprint, request, jsonify
+from flask_jwt_extended import jwt_required, get_jwt_identity
+
+from openai import OpenAI
+
 from app import db
 from app.models import Interview
 
 load_dotenv()
 
-def analysisByLLM(user_id, session_id=None):
-    print(f"[Analysis Start] analyzing user_id: {user_id}, session_id: {session_id}")
+bp = Blueprint("analysis", __name__)
+
+# -----------------------------
+# 내부 유틸
+# -----------------------------
+def _strip_think(text: str) -> str:
+    """일부 모델이 실수로 넣는 </think> 이전 텍스트를 제거"""
+    if "</think>" in text:
+        return text.split("</think>", 1)[-1]
+    return text
+
+
+def _safe_float(val, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+
+def _build_front_payload(interviews: List[Interview]) -> List[Dict[str, Any]]:
     """
-    1) 해당 유저의 특정 세션 또는 모든 Interview 레코드 조회
-    2) LLM에 한번에 보내 분석
-    3) 질문별 analysis, score를 각각의 Interview 객체에 저장
-    4) 전체 summary 반환
+    프론트가 바로 쓰는 InterviewList 아이템으로 변환
+    - question
+    - useranswer
+    - "LLM gen answer"  (현 프론트 호환: 공백 포함 키 유지)
+    - analysis
+    - score
+    - video (video 또는 video_url 중 있는 것)
     """
+    out: List[Dict[str, Any]] = []
+    for itv in interviews:
+        out.append({
+            "question": getattr(itv, "question", "") or "",
+            "useranswer": getattr(itv, "useranswer", "") or "",
+            "LLM gen answer": getattr(itv, "LLM_gen_answer", "") or "",
+            "analysis": getattr(itv, "analysis", "") or "",
+            "score": getattr(itv, "score", 0) or 0,
+            "video": getattr(itv, "video", None) or getattr(itv, "video_url", None)
+        })
+    return out
+
+
+# -----------------------------
+# 핵심 로직
+# -----------------------------
+def analysisByLLM(user_id: int, session_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    1) 특정 세션 또는 전체 인터뷰 로드
+    2) LLM 호출 (JSON 스키마 강제)
+    3) 항목별 analysis/score 저장, summary/overall_scores 반환
+    4) 프론트 포맷으로 딕셔너리 반환: { InterviewList, summary, scores }
+    """
+    print(f"[Analysis Start] analyzing user_id={user_id}, session_id={session_id}")
+
+    # 1) 인터뷰 로드
+    if session_id:
+        interviews = (
+            Interview.query
+            .filter_by(user_id=user_id, session_id=session_id)
+            .order_by(Interview.question_order)
+            .all()
+        )
+        print(f"[Analysis] Found {len(interviews)} interviews for session {session_id}")
+    else:
+        interviews = (
+            Interview.query
+            .filter_by(user_id=user_id)
+            .order_by(Interview.timestamp)
+            .all()
+        )
+        print(f"[Analysis] Found {len(interviews)} total interviews")
+
+    if not interviews:
+        return {
+            "InterviewList": [],
+            "summary": "분석할 인터뷰 데이터가 없습니다.",
+            "scores": {
+                "구체성": 0, "논리성": 0, "적합성": 0, "표현력": 0, "전문성": 0
+            }
+        }
+
+    # 2) LLM 프롬프트 구성 (JSON 스키마 강제)
+    payload_items = []
+    for idx, itv in enumerate(interviews, start=1):
+        payload_items.append({
+            "index": idx,
+            "question": getattr(itv, "question", "") or "",
+            "useranswer": getattr(itv, "useranswer", "") or "",
+            "llm_gen_answer": getattr(itv, "LLM_gen_answer", "") or ""
+        })
+
+    system_prompt = (
+        "너는 면접 분석가야. 아래의 질문/사용자답변/이전 LLM답변을 바탕으로 각 항목의 분석과 점수를 작성해."
+        " 반드시 **유효한 JSON만** 출력해. JSON 외 텍스트 절대 금지."
+    )
+
+    format_instructions = {
+        "type": "object",
+        "required": ["items", "summary", "overall_scores"],
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "required": [
+                        "index", "question", "useranswer", "llm_gen_answer", "analysis", "score"
+                    ],
+                    "properties": {
+                        "index": {"type": "integer"},
+                        "question": {"type": "string"},
+                        "useranswer": {"type": "string"},
+                        "llm_gen_answer": {"type": "string"},
+                        "analysis": {"type": "string"},
+                        "score": {"type": "number", "minimum": 0, "maximum": 100}
+                    }
+                }
+            },
+            "summary": {"type": "string"},
+            "overall_scores": {
+                "type": "object",
+                "required": ["구체성", "논리성", "적합성", "표현력", "전문성"],
+                "properties": {
+                    "구체성": {"type": "number", "minimum": 0, "maximum": 100},
+                    "논리성": {"type": "number", "minimum": 0, "maximum": 100},
+                    "적합성": {"type": "number", "minimum": 0, "maximum": 100},
+                    "표현력": {"type": "number", "minimum": 0, "maximum": 100},
+                    "전문성": {"type": "number", "minimum": 0, "maximum": 100}
+                }
+            }
+        }
+    }
+
+    user_prompt = (
+        "입력 데이터:\n"
+        + json.dumps({"items": payload_items}, ensure_ascii=False, indent=2)
+        + "\n\n"
+        "요구사항:\n"
+        "- 각 항목에 대해 'analysis'(한국어)와 'score'(0~100)를 작성.\n"
+        "- 전체 총평은 'summary'에 작성.\n"
+        "- 전반 평가를 5개 지표(구체성/논리성/적합성/표현력/전문성)로 0~100 점수화하여 'overall_scores'에 넣을 것.\n"
+        "- 출력은 아래 JSON 스키마를 반드시 따를 것. 다른 텍스트 금지.\n"
+        + json.dumps(format_instructions, ensure_ascii=False)
+    )
+
     client = OpenAI(
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         api_key=os.getenv("GEMINI_API_KEY"),
     )
 
-    # 2) 인터뷰 불러오기 (세션별 또는 전체)
-    if session_id:
-        interviews = (Interview.query
-                           .filter_by(user_id=user_id, session_id=session_id)
-                           .order_by(Interview.question_order)
-                           .all())
-        print(f"[Analysis] Found {len(interviews)} interviews for session {session_id}")
-    else:
-        interviews = (Interview.query
-                           .filter_by(user_id=user_id)
-                           .order_by(Interview.timestamp)
-                           .all())
-        print(f"[Analysis] Found {len(interviews)} total interviews")
-    
-    if not interviews:
-        return "분석할 인터뷰 데이터가 없습니다."
-
-    # 3) 프롬프트 생성 (질문/유저답변/LLM답변)
-    prompt_parts = []
-    for idx, itv in enumerate(interviews, start=1):
-        prompt_parts.append(
-            f"---\n"
-            f"질문 {idx}: {itv.question}\n"
-            # f"사용자 답변: {itv.useranswer}\n"
-            f"사용자 답변: {itv.LLM_gen_answer}\n"
-            f"LLM 이전 답변: {itv.LLM_gen_answer}\n"
-        )
-    combined = "\n".join(prompt_parts)
-
-    system_prompt = (
-        "너는 analyst야. "
-        "아래는 면접자가 받은 질문과 그에 대한 답변이야.:\n\n"
-        f"{combined}\n\n"
-        "각 답변에 대해 다음과 같은 형식으로 분석 결과를 제공해줘:\n"
-    """question": "최근 사용한 기술 스택은?",
-    "useranswer": "최근에는 React와 Flask를 이용해서 예약 시스템을 개발했습니다. 프론트엔드는 React로 구성했고, Flask로 API 서버를 구축했습니다. MongoDB를 데이터베이스로 사용했습니다.",
-    "LLM gen answer": "기술 스택에 대한 설명은 명확하나, 기술을 선택한 이유나 해결한 문제에 대한 언급이 없어 실무 역량이 충분히 드러나지 않습니다.",
-    "analysis": "분석내용: 말은 또렷하고 전달력은 좋았음. 다만 내용은 나열식으로 기술되어 면접관의 관심을 끌기엔 부족했음.\n미흡한점: 단순한 기술 나열. 해당 기술이 사용된 배경과 결과가 빠짐.\n개선점: 기술 선택 이유와 구현 성과 또는 문제 해결 경험을 추가.\n수정된 답변: 최근에는 React와 Flask를 사용해 병원 예약 시스템을 개발했습니다. 프론트엔드는 사용자 친화적인 UI를 구현하기 위해 React를, 백엔드는 빠른 REST API 개발을 위해 Flask를 사용했습니다. 인증은 JWT를, DB는 MongoDB로 구성해 빠른 검색이 가능하도록 최적화했습니다.",
-    "score": 78"""
-        "그리고 마지막에 전체 면접에 대한 {summary}를 작성해줘.\n"
-        "**<think> 같은 내부 지시는 절대 출력하지 말고**, 전부 한국어로 작성해."
-    )
-
-    # 4) Chat Completion 호출
     response = client.chat.completions.create(
         model="gemini-2.0-flash",
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user",   "content": "전체 인터뷰 분석해주세요."}
+            {"role": "user",   "content": user_prompt}
         ],
-        temperature=0.7,
-        top_p=0.9,
+        temperature=0.4,
+        top_p=0.95,
     )
-    
-    message = response.choices[0].message.content
-    # <think> 태그 제거
-    if "</think>" in message:
-        message = message.split("</think>", 1)[1]
-    # 줄 단위로 분리하고 공백 줄 제거
-    print("[LLM Response]", message)
-    
-    # 4) 정규식으로 {analysis} 와 {score} 값 모두 뽑아내기
-    #    (?s) DOTALL: 줄바꿈 포함 매칭
-    #    두 가지 패턴 모두 지원: {analysis} : 내용 또는 analysis : 내용
-    analysis_pattern = re.compile(r"(?:\{analysis\}|analysis)\s*:\s*(.+?)(?=(?:\{score\}|score)\s*:|$)", re.IGNORECASE | re.DOTALL)
-    score_pattern    = re.compile(r"(?:\{score\}|score)\s*:\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
-    summary_pattern  = re.compile(r"(?:\{summary\}|summary)\s*:\s*(.+?)(?=\n\n|\Z)", re.IGNORECASE | re.DOTALL)
 
-    analyses = analysis_pattern.findall(message)
-    scores   = score_pattern.findall(message)
-    summary_matches = summary_pattern.findall(message)
-    summary = summary_matches[-1].strip() if summary_matches else ""
-    
-    print(f"[Parsing Results] Found {len(analyses)} analyses, {len(scores)} scores")
-    print(f"[Analyses] {analyses}")
-    print(f"[Scores] {scores}")
-    print(f"[Summary] {summary}")
+    raw = response.choices[0].message.content or ""
+    cleaned = _strip_think(raw).strip()
 
-    # 5) DB에 저장 - 길이 맞춤을 위한 안전 처리
-    min_length = min(len(interviews), len(analyses), len(scores))
-    print(f"[DB Save] Processing {min_length} interviews")
-    
-    for i in range(min_length):
+    # 3) JSON 파싱
+    parsed = None
+    try:
+        parsed = json.loads(cleaned)
+    except Exception:
+        # ```json ... ``` 형태일 경우
+        codeblock = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL | re.IGNORECASE)
+        if codeblock:
+            try:
+                parsed = json.loads(codeblock.group(1))
+            except Exception:
+                parsed = None
+
+    if parsed is None:
+        # ---------- 레거시 백업(정규식) ----------
+        print("[Warn] JSON 파싱 실패 → 레거시 정규식 파싱 시도")
+        analysis_pattern = re.compile(
+            r"(?:\{analysis\}|analysis)\s*:\s*(.+?)(?=(?:\{score\}|score)\s*:|$)",
+            re.IGNORECASE | re.DOTALL
+        )
+        score_pattern = re.compile(
+            r"(?:\{score\}|score)\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+            re.IGNORECASE
+        )
+        summary_pattern = re.compile(
+            r"(?:\{summary\}|summary)\s*:\s*(.+?)(?=\n\n|\Z)",
+            re.IGNORECASE | re.DOTALL
+        )
+
+        analyses = [a.strip() for a in analysis_pattern.findall(cleaned)]
+        scores = [s.strip() for s in score_pattern.findall(cleaned)]
+        summary_matches = summary_pattern.findall(cleaned)
+        summary_text = summary_matches[-1].strip() if summary_matches else ""
+
+        use_n = min(len(interviews), len(analyses), len(scores))
+        print(f"[Legacy Parsing] analyses={len(analyses)}, scores={len(scores)}, use={use_n}")
+
+        for i in range(use_n):
+            itv = interviews[i]
+            itv.analysis = analyses[i]
+            itv.score = _safe_float(scores[i], 0.0)
+
+        for i in range(use_n, len(interviews)):
+            interviews[i].analysis = "분석 결과 없음 (기본값)"
+            interviews[i].score = 0.0
+
+        db.session.commit()
+
+        # overall_scores 대체값(평균점수로 채움)
+        avg = 0.0
+        if interviews:
+            vals = [_safe_float(getattr(itv, "score", 0), 0.0) for itv in interviews]
+            avg = sum(vals) / max(1, len(vals))
+
+        fallback_scores = {
+            "구체성": round(avg, 1),
+            "논리성": round(avg, 1),
+            "적합성": round(avg, 1),
+            "표현력": round(avg, 1),
+            "전문성": round(avg, 1)
+        }
+
+        return {
+            "InterviewList": _build_front_payload(interviews),
+            "summary": summary_text,
+            "scores": fallback_scores
+        }
+
+    # ---------- JSON 파싱 성공 ----------
+    items = parsed.get("items", [])
+    summary_text = parsed.get("summary", "")
+    overall_scores = parsed.get("overall_scores", {})
+
+    save_n = min(len(interviews), len(items))
+    print(f"[JSON Parsed] items={len(items)}, interviews={len(interviews)}, save_count={save_n}")
+
+    for i in range(save_n):
         itv = interviews[i]
-        anal = analyses[i] if i < len(analyses) else "분석 결과 없음"
-        sc = scores[i] if i < len(scores) else "0"
-        
-        itv.analysis = anal.strip()
-        try:
-            itv.score = float(sc)
-        except ValueError:
-            itv.score = 0.0
-            print(f"[Warning] Invalid score format for interview {i}: {sc}")
-    
-    # 분석되지 않은 인터뷰들에 대한 기본값 설정
-    for i in range(min_length, len(interviews)):
+        item = items[i]
+        itv.analysis = (item.get("analysis") or "").strip()
+        itv.score = _safe_float(item.get("score", 0), 0.0)
+
+    for i in range(save_n, len(interviews)):
         interviews[i].analysis = "분석 결과 없음 (기본값)"
         interviews[i].score = 0.0
 
-    # summary 필드가 모델에 있다면 첫 레코드에 저장
-    if hasattr(interviews[0], 'summary'):
-        interviews[0].summary = summary
+    # summary를 DB 칼럼에 저장하고 싶다면 여기서 처리 (모델에 summary 필드가 있을 때만)
+    # if hasattr(interviews[0], "summary"):
+    #     interviews[0].summary = summary_text
 
     db.session.commit()
-    return summary
 
-# def score_answer(answer):
-#     return round(random.uniform(60, 100), 2)
+    return {
+        "InterviewList": _build_front_payload(interviews[:len(items)]),
+        "summary": summary_text,
+        "scores": {
+            # 키가 없거나 숫자가 아니어도 안전하게 0 처리
+            "구체성": _safe_float(overall_scores.get("구체성", 0), 0.0),
+            "논리성": _safe_float(overall_scores.get("논리성", 0), 0.0),
+            "적합성": _safe_float(overall_scores.get("적합성", 0), 0.0),
+            "표현력": _safe_float(overall_scores.get("표현력", 0), 0.0),
+            "전문성": _safe_float(overall_scores.get("전문성", 0), 0.0),
+        }
+    }
 
-# def test_analysisByLLM(answer):
-#     data = {"LLM_gen_answer": "This is a generated answer based on the user's input.",
-#             "analysis": "The answer is well-structured and addresses the question effectively."}
-#     return data
+
+# -----------------------------
+# API 엔드포인트
+# -----------------------------
+@bp.route("/api/interview/analysis", methods=["GET"])
+@jwt_required()
+def api_interview_analysis():
+    """
+    프런트 호출 포인트
+    - Query: session_id (옵션)
+    - Response:
+      {
+        "success": true,
+        "data": {
+          "InterviewList": [...],
+          "summary": "...",
+          "scores": {
+              "구체성": 80, "논리성": 65, "적합성": 75}
+        }
+      }
+    """
+    user_id = get_jwt_identity()
+    session_id = request.args.get("session_id") or request.args.get("sessionId")
+
+    try:
+        data = analysisByLLM(user_id=user_id, session_id=session_id)
+        return jsonify({"success": True, "data": data})
+    except Exception as e:
+        print("[ERROR] analysis failed:", e)
+        return jsonify({"success": False, "message": str(e)}), 500
